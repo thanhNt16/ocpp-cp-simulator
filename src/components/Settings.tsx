@@ -3,8 +3,14 @@ import {configAtom} from "../store/store.ts";
 import {useAtom} from "jotai/index";
 import {DefaultBootNotification} from "../cp/OcppTypes.ts";
 import {useNavigate} from "react-router-dom";
+import { ChargePoint } from '../cp/ChargePoint';
+import { Config, BasicAuthSettings, AutoMeterValueSetting } from '../types/Config';
 
-const Settings: React.FC = () => {
+interface SettingsProps {
+  cp: ChargePoint | null;
+}
+
+const Settings: React.FC<SettingsProps> = ({ cp }) => {
   const [wsURL, setWsURL] = useState<string>("");
   const [connectorNumber, setConnectorNumber] = useState<number>(2);
   const [cpID, setCpID] = useState<string>("");
@@ -18,6 +24,7 @@ const Settings: React.FC = () => {
   const [autoMeterValueEnabled, setAutoMeterValueEnabled] = useState<boolean>(false);
   const [autoMeterValueInterval, setAutoMeterValueInterval] = useState<number>(0);
   const [autoMeterValue, setAutoMeterValue] = useState<number>(0);
+  const [meterValueFormat, setMeterValueFormat] = useState<'detailed' | 'simple'>('detailed');
 
   const [experimental, setExperimental] = useState<string | null>(null);
   const [bootNotification, setBootNotification] = useState<string | null>(JSON.stringify(DefaultBootNotification));
@@ -45,27 +52,39 @@ const Settings: React.FC = () => {
     }
   }, [config]);
 
+  useEffect(() => {
+    if (cp) {
+      setMeterValueFormat(cp.getMeterValueFormat());
+    }
+  }, [cp]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setConfig({
+    const basicAuthSettings: BasicAuthSettings = {
+      enabled: basicAuthEnabled,
+      username: basicAuthUsername,
+      password: basicAuthPassword,
+    };
+
+    const autoMeterValueSetting: AutoMeterValueSetting = {
+      enabled: autoMeterValueEnabled,
+      interval: autoMeterValueInterval,
+      value: autoMeterValue
+    };
+
+    const newConfig: Config = {
       wsURL,
       connectorNumber,
       ChargePointID: cpID,
       tagID,
       ocppVersion,
-      basicAuthSettings: {
-        enabled: basicAuthEnabled,
-        username: basicAuthUsername,
-        password: basicAuthPassword,
-      },
-      autoMeterValueSetting: {
-        enabled: autoMeterValueEnabled,
-        interval: autoMeterValueInterval,
-        value: autoMeterValue
-      },
+      basicAuthSettings,
+      autoMeterValueSetting,
       Experimental: experimental && experimental !== "" ? JSON.parse(experimental) : null,
       BootNotification: bootNotification && bootNotification !== "" ? JSON.parse(bootNotification) : null,
-    } as Config);
+    };
+
+    setConfig(newConfig);
     navigate("/");
   };
 
@@ -205,6 +224,29 @@ const Settings: React.FC = () => {
               />
             </div>
           )}
+        </div>
+
+        <div className="mb-4">
+          <label className="text-gray-700 text-sm font-bold mb-2 block">
+            Meter Value Format
+          </label>
+          <select
+            className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            value={meterValueFormat}
+            onChange={(e) => {
+              const format = e.target.value as 'detailed' | 'simple';
+              setMeterValueFormat(format);
+              if (cp) {
+                cp.setMeterValueFormat(format);
+              }
+            }}
+          >
+            <option value="detailed">Detailed (with phases)</option>
+            <option value="simple">Simple (without phases)</option>
+          </select>
+          <p className="text-gray-600 text-xs italic mt-1">
+            Choose between detailed meter values with phase information or simple meter values without phases
+          </p>
         </div>
 
         <div className="mb-4">

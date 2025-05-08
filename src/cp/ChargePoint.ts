@@ -3,8 +3,11 @@ import {OCPPWebSocket} from "./OCPPWebSocket";
 import {OCPPMessageHandler} from "./OCPPMessageHandler";
 import {Logger} from "./Logger";
 import {OCPPStatus, OCPPAvailability, BootNotification} from "./OcppTypes";
-import {Transaction} from "./Transaction.ts";
-import * as ocpp from "./OcppTypes.ts";
+import {Transaction} from "./Transaction";
+import * as ocpp from "./OcppTypes";
+import { AutoMeterValueSetting } from "../store/store";
+
+export type MeterValueFormat = 'detailed' | 'simple';
 
 export class ChargePoint {
   private _id: string;
@@ -13,7 +16,9 @@ export class ChargePoint {
   private _webSocket: OCPPWebSocket;
   private _messageHandler: OCPPMessageHandler;
   private _logger: Logger;
-  private _autoMeterValueSetting: { interval: number; value: number } | null;
+  private _autoMeterValueSetting: AutoMeterValueSetting | null = null;
+  private _autoMeterValueIntervals: Map<number, number> = new Map();
+  private _meterValueFormat: MeterValueFormat = 'detailed';
 
   public _status: OCPPStatus = OCPPStatus.Unavailable;
   private _error: string = "";
@@ -21,7 +26,6 @@ export class ChargePoint {
   };
 
   private _heartbeat: number | null = null;
-  private _autoMeterValueIntervals: Map<number, number> = new Map();
 
   private _statusChangeCallback:
     | ((status: string, message?: string) => void)
@@ -36,7 +40,7 @@ export class ChargePoint {
               connectorCount: number,
               wsUrl: string,
               basicAuthSettings: { username: string; password: string } | null,
-              autoMeterValueSetting: { interval: number; value: number } | null) {
+              autoMeterValueSetting: AutoMeterValueSetting | null) {
     this._id = id;
     this._bootNotification = _bootNotification;
     this._connectors = new Map();
@@ -317,81 +321,165 @@ export class ChargePoint {
   }
 
   /**
+   * Sets the meter value format to use
+   * @param format The format to use ('detailed' or 'simple')
+   */
+  public setMeterValueFormat(format: MeterValueFormat): void {
+    this._meterValueFormat = format;
+  }
+
+  /**
+   * Gets the current meter value format
+   * @returns The current meter value format
+   */
+  public getMeterValueFormat(): MeterValueFormat {
+    return this._meterValueFormat;
+  }
+
+  /**
    * Generates detailed meter values with voltage, current, power, and energy readings
    * @param meterValue The current meter value
    * @returns A detailed meter value object
    */
   private generateDetailedMeterValues(meterValue: number) {
+    if (this._meterValueFormat === 'simple') {
+      return {
+        timestamp: new Date().toISOString(),
+        sampledValue: [
+          {
+            unit: "kWh" as const,
+            value: (meterValue / 1000).toString(),
+            format: "Raw" as const,
+            measurand: "Energy.Active.Import.Register" as const
+          },
+          {
+            unit: "kW" as const,
+            value: "26.4",
+            format: "Raw" as const,
+            measurand: "Power.Active.Import" as const
+          },
+          {
+            unit: "Percent" as const,
+            value: "66",
+            format: "Raw" as const,
+            measurand: "SoC" as const
+          },
+          {
+            unit: "Celcius" as const,
+            value: "45",
+            format: "Raw" as const,
+            measurand: "Temperature" as const
+          },
+          {
+            unit: "A" as const,
+            value: "79.89",
+            format: "Raw" as const,
+            measurand: "Current.Import" as const
+          },
+          {
+            value: "0",
+            format: "Raw" as const,
+            measurand: "RPM" as const
+          },
+          {
+            unit: "V" as const,
+            value: "330.1",
+            format: "Raw" as const,
+            measurand: "Voltage" as const
+          }
+        ]
+      } as {
+        timestamp: string;
+        sampledValue: Array<{
+          value: string;
+          format: "Raw" | "SignedData";
+          measurand: "Energy.Active.Import.Register" | "Power.Active.Import" | "SoC" | "Temperature" | "Current.Import" | "RPM" | "Voltage";
+          unit?: "kWh" | "kW" | "Percent" | "Celcius" | "A" | "V";
+        }>;
+      };
+    }
+
+    // Detailed format (original implementation)
     return {
       timestamp: new Date().toISOString(),
       sampledValue: [
         {
-          unit: "V" as "V",
-          phase: "L1" as "L1",
+          unit: "V" as const,
+          phase: "L1" as const,
           value: "236.7",
-          location: "Outlet" as "Outlet",
-          measurand: "Voltage" as "Voltage"
+          location: "Outlet" as const,
+          measurand: "Voltage" as const
         },
         {
-          unit: "V" as "V",
-          phase: "L2" as "L2",
+          unit: "V" as const,
+          phase: "L2" as const,
           value: "235.6",
-          location: "Outlet" as "Outlet",
-          measurand: "Voltage" as "Voltage"
+          location: "Outlet" as const,
+          measurand: "Voltage" as const
         },
         {
-          unit: "V" as "V",
-          phase: "L3" as "L3",
+          unit: "V" as const,
+          phase: "L3" as const,
           value: "236.7",
-          location: "Outlet" as "Outlet",
-          measurand: "Voltage" as "Voltage"
+          location: "Outlet" as const,
+          measurand: "Voltage" as const
         },
         {
-          unit: "A" as "A",
-          phase: "L1" as "L1",
+          unit: "A" as const,
+          phase: "L1" as const,
           value: "0.00",
-          location: "Outlet" as "Outlet",
-          measurand: "Current.Import" as "Current.Import"
+          location: "Outlet" as const,
+          measurand: "Current.Import" as const
         },
         {
-          unit: "A" as "A",
-          phase: "L2" as "L2",
+          unit: "A" as const,
+          phase: "L2" as const,
           value: "0.00",
-          location: "Outlet" as "Outlet",
-          measurand: "Current.Import" as "Current.Import"
+          location: "Outlet" as const,
+          measurand: "Current.Import" as const
         },
         {
-          unit: "A" as "A",
-          phase: "L3" as "L3",
+          unit: "A" as const,
+          phase: "L3" as const,
           value: "0.00",
-          location: "Outlet" as "Outlet",
-          measurand: "Current.Import" as "Current.Import"
+          location: "Outlet" as const,
+          measurand: "Current.Import" as const
         },
         {
-          unit: "W" as "W",
+          unit: "W" as const,
           value: "2000",
-          location: "Outlet" as "Outlet",
-          measurand: "Power.Active.Import" as "Power.Active.Import"
+          location: "Outlet" as const,
+          measurand: "Power.Active.Import" as const
         },
         {
-          unit: "Percent" as "Percent",
+          unit: "Percent" as const,
           value: "10",
-          location: "EV" as "EV",
-          measurand: "SoC" as "SoC"
+          location: "EV" as const,
+          measurand: "SoC" as const
         },
         {
-          unit: "W" as "W",
+          unit: "W" as const,
           value: "22687",
-          location: "Outlet" as "Outlet",
-          measurand: "Power.Offered" as "Power.Offered"
+          location: "Outlet" as const,
+          measurand: "Power.Offered" as const
         },
         {
-          unit: "Wh" as "Wh",
+          unit: "Wh" as const,
           value: meterValue.toString(),
-          location: "Outlet" as "Outlet",
-          measurand: "Energy.Active.Import.Register" as "Energy.Active.Import.Register"
+          location: "Outlet" as const,
+          measurand: "Energy.Active.Import.Register" as const
         }
       ]
+    } as {
+      timestamp: string;
+      sampledValue: Array<{
+        value: string;
+        format?: "Raw" | "SignedData";
+        measurand: "Voltage" | "Current.Import" | "Power.Active.Import" | "SoC" | "Power.Offered" | "Energy.Active.Import.Register";
+        unit?: "V" | "A" | "W" | "Percent" | "Wh";
+        phase?: "L1" | "L2" | "L3";
+        location?: "Outlet" | "EV";
+      }>;
     };
   }
 
